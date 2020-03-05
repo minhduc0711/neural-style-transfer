@@ -56,7 +56,7 @@ class TransformerNet(nn.Module):
             x = conv_t(x)
             # print(x.shape)
         x = self.final_conv(x)
-        x = torch.sigmoid(x)
+        # x = torch.sigmoid(x)
         # print(x.shape)
         return x
     
