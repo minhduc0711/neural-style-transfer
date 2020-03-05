@@ -1,2 +1,3 @@
-wget http://images.cocodataset.org/zips/train2014.zip -P data/COCO/
-unzip data/COCO/train2014.zip -d data/COCO
+wget http://images.cocodataset.org/zips/train2014.zip -P data/
+unzip data/train2014.zip -d data/
+rm data/train2014.zip
