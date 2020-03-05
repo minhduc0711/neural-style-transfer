@@ -9,8 +9,8 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.conv1 = Conv2dRefPad(num_filters, num_filters, 3)
         self.conv2 = Conv2dRefPad(num_filters, num_filters, 3)
-        self.inst_norm1 = nn.InstanceNorm2d(num_filters)
-        self.inst_norm2 = nn.InstanceNorm2d(num_filters)
+        self.inst_norm1 = nn.InstanceNorm2d(num_filters, affine=True)
+        self.inst_norm2 = nn.InstanceNorm2d(num_filters, affine=True)
 
     def forward(self, x):
         old_x = x
@@ -30,16 +30,18 @@ class TransformerNet(nn.Module):
 
         self.convs = nn.ModuleList([
             nn.Sequential(Conv2dRefPad(3, 32, 9),
-                          nn.InstanceNorm2d(32), nn.ReLU()),
+                          nn.InstanceNorm2d(32, affine=True), nn.ReLU()),
             nn.Sequential(Conv2dRefPad(32, 64, 3, stride=2),
-                          nn.InstanceNorm2d(32), nn.ReLU()),
+                          nn.InstanceNorm2d(64, affine=True), nn.ReLU()),
             nn.Sequential(Conv2dRefPad(64, 128, 3, stride=2),
-                          nn.InstanceNorm2d(32), nn.ReLU())
+                          nn.InstanceNorm2d(128, affine=True), nn.ReLU())
         ])
         self.residuals = nn.ModuleList([ResidualBlock(128)] * 5)
         self.convs_t = nn.ModuleList([
-            UpsampleConv(128, 64, 3, stride=1, upsample=2),
-            UpsampleConv(64, 32, 3, stride=1, upsample=2)
+            nn.Sequential(UpsampleConv(128, 64, 3, stride=1, upsample=2),
+                          nn.InstanceNorm2d(64, affine=True)),
+            nn.Sequential(UpsampleConv(64, 32, 3, stride=1, upsample=2),
+                          nn.InstanceNorm2d(32, affine=True))
         ])
         self.final_conv = Conv2dRefPad(32, 3, 9, stride=1)
 
