@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import vgg16_bn
+from torchvision.models import vgg16_bn, vgg16
 
 
 class ResidualBlock(nn.Module):
@@ -91,7 +91,7 @@ class UpsampleConv(nn.Module):
 class Vgg16Wrapper(nn.Module):
     def __init__(self, requires_grad):
         super(Vgg16Wrapper, self).__init__()
-        features = list(vgg16_bn(pretrained=True).features)
+        features = list(vgg16(pretrained=True).features)
         self.features = nn.ModuleList(features).eval()
         if not requires_grad:
             for param in self.parameters():
