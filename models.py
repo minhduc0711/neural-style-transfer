@@ -7,8 +7,8 @@ from torchvision.models import vgg16_bn, vgg16
 class ResidualBlock(nn.Module):
     def __init__(self, num_filters):
         super(ResidualBlock, self).__init__()
-        self.conv1 = Conv2dRefPad(num_filters, num_filters, 3)
-        self.conv2 = Conv2dRefPad(num_filters, num_filters, 3)
+        self.conv1 = Conv2dRefPad(num_filters, num_filters, 3, bias=False)
+        self.conv2 = Conv2dRefPad(num_filters, num_filters, 3, bias=False)
         self.inst_norm1 = nn.InstanceNorm2d(num_filters, affine=True)
         self.inst_norm2 = nn.InstanceNorm2d(num_filters, affine=True)
 
@@ -25,25 +25,57 @@ class ResidualBlock(nn.Module):
 
 
 class TransformerNet(nn.Module):
-    def __init__(self):
+    def __init__(self, alpha=1.0):
+        """
+        Build a generative network specified in https://cs.stanford.edu/people/jcjohns/eccv16/
+        but BatchNorm were replaced by InstanceNorm
+
+        Args:
+            alpha: factor to adjust the number of filters in conv layers
+
+        """
         super(TransformerNet, self).__init__()
 
-        self.convs = nn.ModuleList([
-            nn.Sequential(Conv2dRefPad(3, 32, 9),
-                          nn.InstanceNorm2d(32, affine=True), nn.ReLU()),
-            nn.Sequential(Conv2dRefPad(32, 64, 3, stride=2),
-                          nn.InstanceNorm2d(64, affine=True), nn.ReLU()),
-            nn.Sequential(Conv2dRefPad(64, 128, 3, stride=2),
-                          nn.InstanceNorm2d(128, affine=True), nn.ReLU())
-        ])
-        self.residuals = nn.ModuleList([ResidualBlock(128)] * 5)
-        self.convs_t = nn.ModuleList([
-            nn.Sequential(UpsampleConv(128, 64, 3, stride=1, upsample=2),
-                          nn.InstanceNorm2d(64, affine=True)),
-            nn.Sequential(UpsampleConv(64, 32, 3, stride=1, upsample=2),
-                          nn.InstanceNorm2d(32, affine=True))
-        ])
-        self.final_conv = Conv2dRefPad(32, 3, 9, stride=1)
+        # Number of filters for each conv layer
+        conv_filters = [32] * 3  # [32, 64, 128]
+        conv_ksizes = [9, 3, 3]
+        conv_strides = [1, 2, 2]
+        conv_filters = [int(n * alpha) for n in conv_filters]
+
+        res_filters = [32] * 3 # default is 128 
+        res_filters = [int(n * alpha) for n in res_filters]
+
+        upsample_filters = [32] * 2  # [64, 32]
+        upsample_ksizes = [3, 3]
+        upsample_strides = [1, 1]
+        upsample_factors = [2, 2]
+        upsample_filters = [int(n * alpha) for n in upsample_filters]
+
+        self.convs = nn.ModuleList()
+        self.residuals = nn.ModuleList()
+        self.upsample_convs = nn.ModuleList()
+
+        in_c = 3
+        for out_c, ksize, stride in zip(conv_filters, conv_ksizes, conv_strides):
+            self.convs.append(nn.Sequential(
+                Conv2dRefPad(in_c, out_c, ksize, stride, bias=False),
+                nn.InstanceNorm2d(out_c, affine=True),
+                nn.ReLU()
+            ))
+            in_c = out_c
+        for out_c in res_filters:
+            self.residuals.append(ResidualBlock(out_c))
+            in_c = out_c
+        for out_c, ksize, stride, factor in \
+                zip(upsample_filters, upsample_ksizes, upsample_strides, upsample_factors):
+            self.upsample_convs.append(nn.Sequential(
+                UpsampleConv(in_c, out_c, ksize, stride, upsample=factor, bias=False),
+                nn.InstanceNorm2d(out_c, affine=True),
+                nn.ReLU(),
+            ))
+            in_c = out_c
+
+        self.final_conv = Conv2dRefPad(int(32 * alpha), 3, 9, stride=1)
 
     def forward(self, x):
         for conv in self.convs:
@@ -52,41 +84,44 @@ class TransformerNet(nn.Module):
         for residual in self.residuals:
             x = residual(x)
             # print(x.shape)
-        for conv_t in self.convs_t:
-            x = conv_t(x)
+        for upsample_conv in self.upsample_convs:
+            x = upsample_conv(x)
             # print(x.shape)
         x = self.final_conv(x)
         x = torch.sigmoid(x)
         # print(x.shape)
         return x
-    
-    
+
+
 class Conv2dRefPad(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, bias=True):
         super(Conv2dRefPad, self).__init__()
         pad = kernel_size // 2
         self.pad_layer = nn.ReflectionPad2d(pad)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride)
-        
+        self.conv = nn.Conv2d(in_channels, out_channels,
+                              kernel_size, stride=stride, bias=bias)
+
     def forward(self, x):
         x = self.pad_layer(x)
         x = self.conv(x)
         return x
 
+
 class UpsampleConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, upsample=None):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, upsample=None, bias=True):
         super(UpsampleConv, self).__init__()
         self.upsample = upsample
         pad = kernel_size // 2
         self.pad_layer = nn.ReflectionPad2d(pad)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride)
-    
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, bias=bias)
+
     def forward(self, x):
         if self.upsample:
             x = F.interpolate(x, mode='nearest', scale_factor=self.upsample)
         x = self.pad_layer(x)
         x = self.conv(x)
         return x
+
 
 class Vgg16Wrapper(nn.Module):
     def __init__(self, requires_grad):
@@ -96,15 +131,15 @@ class Vgg16Wrapper(nn.Module):
         if not requires_grad:
             for param in self.parameters():
                 param.requires_grad = False
-        
-    def forward(self, x, 
+
+    def forward(self, x,
                 content_layer_idxs=None,
                 style_layer_idxs=None):
         if content_layer_idxs is None:
             content_layer_idxs = []
         if style_layer_idxs is None:
             style_layer_idxs = []
-            
+
         content_acts = []
         style_acts = []
         max_idx = max(content_layer_idxs + style_layer_idxs)
