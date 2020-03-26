@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import vgg16_bn, vgg16
+from torchvision.models import vgg16
 
 
 class ResidualBlock(nn.Module):
@@ -27,7 +27,7 @@ class ResidualBlock(nn.Module):
 class TransformerNet(nn.Module):
     def __init__(self, alpha=1.0):
         """
-        Build a generative network specified in https://cs.stanford.edu/people/jcjohns/eccv16/
+        Build a generative network described in https://cs.stanford.edu/people/jcjohns/eccv16/
         but BatchNorm were replaced by InstanceNorm
 
         Args:
@@ -42,7 +42,7 @@ class TransformerNet(nn.Module):
         conv_strides = [1, 2, 2]
         conv_filters = [int(n * alpha) for n in conv_filters]
 
-        res_filters = [32] * 3 # default is 128 
+        res_filters = [32] * 3  # default is 128
         res_filters = [int(n * alpha) for n in res_filters]
 
         upsample_filters = [32] * 2  # [64, 32]
@@ -69,7 +69,8 @@ class TransformerNet(nn.Module):
         for out_c, ksize, stride, factor in \
                 zip(upsample_filters, upsample_ksizes, upsample_strides, upsample_factors):
             self.upsample_convs.append(nn.Sequential(
-                UpsampleConv(in_c, out_c, ksize, stride, upsample=factor, bias=False),
+                UpsampleConv(in_c, out_c, ksize, stride,
+                             upsample=factor, bias=False),
                 nn.InstanceNorm2d(out_c, affine=True),
                 nn.ReLU(),
             ))
@@ -113,11 +114,13 @@ class UpsampleConv(nn.Module):
         self.upsample = upsample
         pad = kernel_size // 2
         self.pad_layer = nn.ReflectionPad2d(pad)
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, bias=bias)
+        self.conv = nn.Conv2d(in_channels, out_channels,
+                              kernel_size, stride, bias=bias)
 
     def forward(self, x):
         if self.upsample:
-            x = F.interpolate(x, mode='nearest', scale_factor=self.upsample)
+            x = F.interpolate(x, mode='nearest',
+                              scale_factor=float(self.upsample))
         x = self.pad_layer(x)
         x = self.conv(x)
         return x

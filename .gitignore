@@ -141,3 +141,4 @@ data/COCO/
 checkpoints/
 gen_imgs/
 logdir/
+draft.ipynb
